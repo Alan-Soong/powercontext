@@ -504,3 +504,182 @@ def _embedding_hash(profile: EmbeddingProfile, entry_hash: str) -> str:
         normalization=profile.normalization,
         entry_content_hash=entry_hash,
     )
+
+
+_OCEANBASE_HYBRID_SEARCH_SQL = """
+SELECT * FROM (
+    SELECT
+        'fts' AS channel,
+        f.memory_artifact_id,
+        f.head_revision,
+        f.entry_id,
+        f.entry_version_id,
+        v.text,
+        NULL AS distance
+    FROM pc_memory_entry_heads AS f
+    JOIN pc_memory_entry_versions AS v
+      ON v.scope_id = f.scope_id
+     AND v.memory_artifact_id = f.memory_artifact_id
+     AND v.entry_version_id = f.entry_version_id
+    WHERE f.scope_id = :scope_id
+      AND f.memory_artifact_id IN :memory_artifact_ids
+      AND MATCH (f.searchable_text) AGAINST (:query)
+      {fts_tag}
+    ORDER BY MATCH (f.searchable_text) AGAINST (:query) DESC,
+             f.memory_artifact_id,
+             f.entry_id,
+             f.entry_version_id
+    LIMIT :candidate_limit
+) AS fts_candidates
+UNION ALL
+SELECT * FROM (
+    SELECT
+        'vector' AS channel,
+        m.memory_artifact_id,
+        m.head_revision,
+        m.entry_id,
+        m.entry_version_id,
+        v.text,
+        l2_distance(m.embedding, :query_vector) AS distance
+    FROM pc_memory_vector_entries AS m
+    JOIN pc_memory_entry_versions AS v
+      ON v.scope_id = m.scope_id
+     AND v.memory_artifact_id = m.memory_artifact_id
+     AND v.entry_version_id = m.entry_version_id
+    WHERE m.scope_id = :scope_id
+      AND m.memory_artifact_id IN :memory_artifact_ids
+      {vector_tag}
+    ORDER BY l2_distance(m.embedding, :query_vector){approximate}
+    LIMIT :candidate_limit
+) AS vector_candidates
+"""
+
+
+class OceanBaseMemoryHybridIndex:
+    """Read FULLTEXT and vector candidates from one native seekdb statement."""
+
+    single_statement_hybrid = True
+
+    def __init__(self, vector_index: OceanBaseMemoryVectorIndex) -> None:
+        self._vector = vector_index
+        self.profile = vector_index.profile
+        self.capabilities = MemoryCapabilities(
+            fts=False,
+            vector=False,
+            hybrid=True,
+            tag_filter=True,
+            embedding_profile=self.profile,
+        )
+        self.tables: tuple[Table, ...] = ()
+        self._plain_sql = text(
+            _OCEANBASE_HYBRID_SEARCH_SQL.format(fts_tag="", vector_tag="", approximate=" APPROXIMATE")
+        ).bindparams(
+            bindparam("memory_artifact_ids", expanding=True),
+            bindparam("query_vector", type_=VECTOR(self.profile.dimension)),
+        )
+        self._tagged_sql = text(
+            _OCEANBASE_HYBRID_SEARCH_SQL.format(
+                fts_tag=memory_tag_sql("f"),
+                vector_tag=memory_tag_sql("m"),
+                approximate="",
+            )
+        ).bindparams(
+            bindparam("memory_artifact_ids", expanding=True),
+            bindparam("tag_keys", expanding=True),
+            bindparam("tag_hashes", expanding=True),
+            bindparam("query_vector", type_=VECTOR(self.profile.dimension)),
+        )
+
+    async def initialize(self, connection: AsyncConnection, /) -> None:
+        del connection
+
+    async def replace(
+        self,
+        connection: AsyncConnection,
+        scope_id: str,
+        memory_ref: ArtifactRef,
+        projections: tuple[MemoryProjection, ...],
+        /,
+    ) -> None:
+        del connection, scope_id, memory_ref, projections
+
+    async def delete(
+        self,
+        connection: AsyncConnection,
+        scope_id: str,
+        memory_ref: ArtifactRef,
+        entry_ids: tuple[str, ...],
+        /,
+    ) -> None:
+        del connection, scope_id, memory_ref, entry_ids
+
+    async def upsert(
+        self,
+        connection: AsyncConnection,
+        scope_id: str,
+        memory_ref: ArtifactRef,
+        projections: tuple[MemoryProjection, ...],
+        /,
+    ) -> None:
+        del connection, scope_id, memory_ref, projections
+
+    async def search(
+        self,
+        connection: AsyncConnection,
+        scope_id: str,
+        request: MemorySearchRequest,
+        /,
+    ) -> MemorySearchChannels:
+        if request.mode != "hybrid":
+            return MemorySearchChannels()
+        if request.embedding_profile != self.profile or request.query_vector is None:
+            raise CapabilityNotSupportedError("embedding-profile")
+        if not await self._vector.vector_complete(connection, scope_id, request.memories, self.profile):
+            raise CapabilityNotSupportedError("vector")
+        statement = self._plain_sql if request.tag_filter is None else self._tagged_sql
+        rows = (
+            await connection.execute(
+                statement,
+                {
+                    "scope_id": scope_id,
+                    "memory_artifact_ids": tuple(memory.artifact_id for memory in request.memories),
+                    "query": request.analyzed_query,
+                    "query_vector": validate_embedding(
+                        request.query_vector,
+                        dimension=self.profile.dimension,
+                    ),
+                    "candidate_limit": request.candidate_limit,
+                    **memory_tag_parameters(request.tag_filter),
+                },
+            )
+        ).mappings().all()
+        return MemorySearchChannels(
+            fts=memory_channel_hits(
+                (row for row in rows if str(row["channel"]) == "fts"),
+                request.memories,
+            ),
+            vector=memory_channel_hits(
+                (row for row in rows if str(row["channel"]) == "vector"),
+                request.memories,
+            ),
+        )
+
+    async def vector_complete(
+        self,
+        connection: AsyncConnection,
+        scope_id: str,
+        memories: tuple[ArtifactRef, ...],
+        profile: EmbeddingProfile,
+        /,
+    ) -> bool:
+        return await self._vector.vector_complete(connection, scope_id, memories, profile)
+
+    async def hydrate(
+        self,
+        connection: AsyncConnection,
+        scope_id: str,
+        projections: tuple[MemoryProjection, ...],
+        /,
+    ) -> tuple[MemoryProjection, ...]:
+        del connection, scope_id
+        return projections
