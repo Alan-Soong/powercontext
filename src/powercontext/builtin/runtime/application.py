@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping, Sequence
-from contextlib import AbstractContextManager, asynccontextmanager, nullcontext
+from contextlib import AbstractContextManager, asynccontextmanager, nullcontext, suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -2985,6 +2985,10 @@ def _log_scheduled_processing(
     )
 
 
+_COUNT_TRIGGER_POLL_SECONDS = 0.2
+_COUNT_TRIGGER_RETRY_SECONDS = 1.0
+
+
 class BuiltinRuntime:
     """Add business-specific operations over composed built-in contexts."""
 
@@ -3043,6 +3047,9 @@ class BuiltinRuntime:
         remote_ingestion: RemoteIngestion | None = None,
         dream_service: DreamService | None = None,
         generation_concurrency: int = 4,
+        source_pending_counts: Callable[[str], Awaitable[tuple[int, int]]] | None = None,
+        memory_source_count_threshold: int | None = None,
+        topic_memory_source_count_threshold: int | None = None,
     ) -> None:
         if source_window_limit < 1:
             raise _RuntimeConfigurationError("source_window_limit")
@@ -3099,6 +3106,11 @@ class BuiltinRuntime:
         self._scheduled_source_runner = scheduled_source_runner
         self._scheduled_experience_runner = scheduled_experience_runner
         self.source_window_limit = source_window_limit
+        self._source_pending_counts = source_pending_counts
+        self._memory_source_count_threshold = memory_source_count_threshold
+        self._topic_memory_source_count_threshold = topic_memory_source_count_threshold
+        self._scope_id_source = scope_ids
+        self._count_trigger_task: asyncio.Task[None] | None = None
         self.context_assembly_max_entries = context_assembly_max_entries
         self.recall_sufficiency_policy = recall_sufficiency_policy
         self._scope_cache = ScopeCache(
@@ -3273,12 +3285,109 @@ class BuiltinRuntime:
             self._dream_service.authorization_context = context
             self._dream_service.attest_candidate = attest_candidate
 
+    def start_count_trigger(self) -> None:
+        """Start automatic count-triggered Source-window processing when configured."""
+
+        if self._count_trigger_task is not None:
+            return
+        if self._memory_source_count_threshold is None and self._topic_memory_source_count_threshold is None:
+            return
+        if self._source_pending_counts is None or self._scope_id_source is None:
+            return
+        self._count_trigger_task = asyncio.create_task(self._count_trigger_loop(), name="source-count-trigger")
+
+    async def _count_trigger_loop(self) -> None:
+        """Process one window per Family once its pending count reaches the threshold."""
+
+        thresholds = (
+            ("memory", self._memory_source_count_threshold),
+            ("topic-memory", self._topic_memory_source_count_threshold),
+        )
+        cooldowns: dict[tuple[str, str], float] = {}
+        loop = asyncio.get_running_loop()
+        while not (self._closing or self._closed):
+            scope_ids: tuple[str, ...] = ()
+            if self._scope_id_source is not None:
+                try:
+                    scope_ids = await self._scope_id_source()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    log_safely(
+                        logger,
+                        logging.WARNING,
+                        "Count-triggered scope discovery failed",
+                        exc_info=error,
+                        extra={
+                            "event": "source_window.count.discovery_failed",
+                            "outcome": "failure",
+                            "unit": "source",
+                        },
+                    )
+            for scope_id in scope_ids:
+                if self._closing or self._closed:
+                    break
+                pending = await self._pending_counts(scope_id)
+                if pending is None:
+                    continue
+                for family, threshold in thresholds:
+                    if threshold is None:
+                        continue
+                    key = (scope_id, family)
+                    if cooldowns.get(key, 0.0) > loop.time():
+                        continue
+                    if (pending[0] if family == "memory" else pending[1]) < threshold:
+                        continue
+                    try:
+                        await self._process_count_window(scope_id, family)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as error:
+                        cooldowns[key] = loop.time() + _COUNT_TRIGGER_RETRY_SECONDS
+                        log_safely(
+                            logger,
+                            logging.WARNING,
+                            "Count-triggered source window failed",
+                            exc_info=error,
+                            extra={
+                                "event": "source_window.count.failed",
+                                "outcome": "failure",
+                                "unit": family,
+                            },
+                        )
+                    else:
+                        cooldowns.pop(key, None)
+            await asyncio.sleep(_COUNT_TRIGGER_POLL_SECONDS)
+
+    async def _pending_counts(self, scope_id: str, /) -> tuple[int, int] | None:
+        if self._source_pending_counts is None:
+            return None
+        try:
+            return await self._source_pending_counts(scope_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            return None
+
+    async def _process_count_window(self, scope_id: str, family: str, /) -> None:
+        if family == "memory":
+            await self.memory.for_scope(scope_id).flush()
+            return
+        if self._topic_memory_processing_available and self._topic_memory_flush is not None:
+            await self.topic_memory.for_scope(scope_id).flush()
+
     async def close(self) -> None:
         """Stop accepting work and await in-flight operations without closing the provider."""
 
         async with self._close_lock:
             if self._closed:
                 return
+            count_trigger = self._count_trigger_task
+            self._count_trigger_task = None
+            if count_trigger is not None:
+                count_trigger.cancel()
+                with suppress(asyncio.CancelledError):
+                    await count_trigger
             if self._scheduler is not None and self._scheduler.running:
                 self._scheduler.pause()
             async with self._lifecycle:

@@ -952,6 +952,21 @@ class RelationalContexts:
                 )
         return pending is not None
 
+    async def source_pending_counts(self, scope_id: str, /) -> tuple[int, int]:
+        """Return pending Journal entries for Memory and Topic Memory in one scope."""
+
+        scope = validate_scope_id(scope_id)
+        async with self.database.transaction() as connection:
+            high_watermark = await self.repositories.sources.journal_position(connection, scope)
+            memory = await self.repositories.cursors.load(connection, scope, SOURCE_WINDOW_TRIGGER_NAME)
+            topic = await self.repositories.cursors.load(connection, scope, TOPIC_MEMORY_SOURCE_WINDOW_BINDING)
+        memory_cursor = 0 if memory is None else memory.cursor.sequence
+        topic_cursor = 0 if topic is None else topic.cursor.sequence
+        return (
+            max(0, high_watermark - memory_cursor),
+            max(0, high_watermark - topic_cursor),
+        )
+
     async def browse_topic_memories(
         self,
         scope_id: str,
