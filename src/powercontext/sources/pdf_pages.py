@@ -79,19 +79,43 @@ _SECTION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
     "mda": (re.compile(r"management.s discussion"),),
     "tax": (re.compile(r"income taxes?"), re.compile(r"effective tax rate")),
     "debt": (re.compile(r"debt"), re.compile(r"borrowings"), re.compile(r"long-term obligations")),
+    "segment": (re.compile(r"segment"), re.compile(r"business segment")),
+    "customer": (re.compile(r"customer"), re.compile(r"concentration")),
+    "summary": (re.compile(r"summary of financial performance"), re.compile(r"financial highlights")),
 }
 _INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "income": ("income", "margin", "revenue", "gross", "operating", "net", "ebitda", "earnings", "profit", "eps"),
     "balance": (
         "balance",
         "asset",
         "liability",
         "liabilities",
+        "liquidity",
+        "quick ratio",
+        "current ratio",
+        "working capital",
         "inventory",
         "receivable",
         "goodwill",
         "equity",
         "cash equivalents",
+        "debt",
+        "borrowings",
+        "leverage",
+    ),
+    "income": (
+        "income",
+        "margin",
+        "revenue",
+        "gross",
+        "operating",
+        "net",
+        "ebitda",
+        "earnings",
+        "profit",
+        "eps",
+        "cost of sales",
+        "expense",
+        "tax",
     ),
     "cashflow": (
         "cash flow",
@@ -102,12 +126,16 @@ _INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
         "investing",
         "financing",
         "free cash",
+        "depreciation",
+        "amortization",
     ),
-    "geographic": ("geograph", "region", "international", "countries"),
+    "mda": ("drove", "driven", "change", "changes", "compared", "discussion", "results of operations"),
+    "segment": ("segment", "segments", "business segment"),
+    "geographic": ("geograph", "region", "regions", "international", "countries"),
     "legal": ("legal", "litigation", "proceedings", "lawsuit", "settlement"),
-    "tax": ("tax",),
-    "debt": ("debt", "borrowings", "leverage"),
-    "risk": ("risk",),
+    "risk": ("risk", "risks"),
+    "customer": ("customer", "customers", "client", "clients", "concentration"),
+    "summary": ("summary", "performance"),
 }
 _BM25_B = 0.75
 _HEADING_LINES = 3
@@ -289,7 +317,7 @@ async def search_pdf_pages(
     keys = [entry[3] for entry in entries]
     lexical = _rank_page_entries(terms, texts, pages, _question_intents(question))
     documents = [text.split("\n", 1)[0] for text in texts]
-    lexical = _apply_document_routing(lexical, documents, pages)
+    lexical = _apply_document_routing(lexical, documents, pages, terms)
     mode, order_hits = await _memory_search_order(memory, question, limit)
     fused = _fuse_with_memory_search(lexical, order_hits, entries) if mode != "fts" else lexical
     selected: list[MemoryCitation] = []
@@ -340,13 +368,37 @@ async def _memory_search_order(
     return str(page.mode or ""), tuple(hit.entry_id for hit in page.hits)
 
 
+def _named_documents(terms: list[str], documents: list[str]) -> frozenset[str]:
+    """Match a question against the filing names it refers to."""
+
+    if not terms:
+        return frozenset()
+    probe = set(terms) | {left + right for left, right in zip(terms, terms[1:])}
+    named = set()
+    for document in set(documents):
+        tokens = {
+            token
+            for token in _TERM.findall(str(document).casefold())
+            if len(token) >= 3 and not token.isdigit()
+        }
+        if tokens & probe:
+            named.add(document)
+    return frozenset(named)
+
+
 def _apply_document_routing(
     ranked: list[int],
     documents: list[str],
     pages: list[int],
+    terms: list[str] | None = None,
 ) -> list[int]:
-    """Concentrate the ranking on the documents that match the question best."""
+    """Prefer filings named by the question, then concentrate on the best-scoring filing."""
 
+    named = _named_documents(terms or (), documents)
+    if named:
+        return [index for index in ranked if documents[index] in named] + [
+            index for index in ranked if documents[index] not in named
+        ]
     scores = {index: 1.0 / (_RRF_K + rank) for rank, index in enumerate(ranked, start=1)}
     totals: dict[str, float] = {}
     for index, value in scores.items():
