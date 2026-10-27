@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+from functools import lru_cache
 import math
 import re
 from collections import Counter
@@ -50,8 +51,10 @@ _TERM = re.compile(r"[a-z]+|\d+")
 _BM25_K1 = 1.2
 _BLEND_RELEVANCE = 1.0
 _BLEND_COVERAGE = 0.75
-_BLEND_HEADING = 0.75
-_BLEND_SECTION = 1.0
+_BLEND_HEADING = 0.5
+_BLEND_SECTION = 1.5
+_BLEND_DOCUMENT = 0.5
+_DOCUMENT_POOL = 20.0
 _RRF_K = 60
 _SECTION_WINDOW = 600
 _SECTION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
@@ -285,7 +288,10 @@ async def search_pdf_pages(
     pages = [entry[2] for entry in entries]
     keys = [entry[3] for entry in entries]
     lexical = _rank_page_entries(terms, texts, pages, _question_intents(question))
-    fused = _fuse_with_memory_search(lexical, await _memory_search_order(memory, question, limit), entries)
+    documents = [text.split("\n", 1)[0] for text in texts]
+    lexical = _apply_document_routing(lexical, documents, pages)
+    mode, order_hits = await _memory_search_order(memory, question, limit)
+    fused = _fuse_with_memory_search(lexical, order_hits, entries) if mode != "fts" else lexical
     selected: list[MemoryCitation] = []
     seen: set[str] = set()
     for index in fused:
@@ -320,18 +326,37 @@ async def _memory_search_order(
     memory: ScopedMemoryApplication,
     question: str,
     limit: int,
-) -> tuple[str, ...]:
-    """Ask the Memory for its own retrieval order, tolerating older Memories."""
+) -> tuple[str, tuple[str, ...]]:
+    """Ask the Memory for its own retrieval order and the mode that produced it."""
 
     try:
         from powercontext.builtin.runtime.models import SearchMemoryRequest
     except Exception:  # noqa: BLE001 - the runtime contract is optional for this helper
-        return ()
+        return "", ()
     try:
         page = await memory.search(SearchMemoryRequest(query=question, mode="auto", limit=max(limit * 5, 100)))
     except Exception:  # noqa: BLE001 - no usable index means lexical ranking alone
-        return ()
-    return tuple(hit.entry_id for hit in page.hits)
+        return "", ()
+    return str(page.mode or ""), tuple(hit.entry_id for hit in page.hits)
+
+
+def _apply_document_routing(
+    ranked: list[int],
+    documents: list[str],
+    pages: list[int],
+) -> list[int]:
+    """Concentrate the ranking on the documents that match the question best."""
+
+    scores = {index: 1.0 / (_RRF_K + rank) for rank, index in enumerate(ranked, start=1)}
+    totals: dict[str, float] = {}
+    for index, value in scores.items():
+        document = documents[index]
+        totals[document] = totals.get(document, 0.0) + value
+    blended = {
+        index: value + _BLEND_DOCUMENT * totals.get(documents[index], 0.0) / _DOCUMENT_POOL
+        for index, value in scores.items()
+    }
+    return sorted(blended, key=lambda index: (-blended[index], pages[index], index))
 
 
 def _fuse_with_memory_search(
@@ -408,10 +433,12 @@ def _rank_page_entries(
     return sorted(range(total), key=lambda index: (-blended[index], order[index], index))
 
 
+@lru_cache(maxsize=8192)
 def _page_terms(text: str) -> Counter[str]:
     return Counter(_stem(term) for term in _TERM.findall(text.casefold()) if term not in _STOPWORDS)
 
 
+@lru_cache(maxsize=8192)
 def _heading_terms(text: str) -> frozenset[str]:
     lines = [line.strip() for line in text.split("\n") if line.strip()][: _HEADING_LINES + 1]
     if lines and " " not in lines[0] and lines[0].isascii():
@@ -420,6 +447,7 @@ def _heading_terms(text: str) -> frozenset[str]:
     return frozenset(_stem(term) for term in _TERM.findall(" ".join(lines).casefold()))
 
 
+@lru_cache(maxsize=8192)
 def _section_labels(text: str) -> frozenset[str]:
     head = text[: _SECTION_WINDOW].casefold()
     return frozenset(
