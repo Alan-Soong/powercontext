@@ -304,9 +304,9 @@ async def search_pdf_pages(
     """Return up to ``limit`` distinct evidence-page citations for one question."""
 
     if not isinstance(question, str) or not question.strip():
-        raise ValueError("question must be a non-blank string")  # noqa: TRY003
+        return ()
     if type(limit) is not int or limit < 1:
-        raise ValueError("limit must be a positive integer")  # noqa: TRY003
+        return ()
     terms = _question_terms(question)
     if not terms:
         return ()
@@ -355,16 +355,30 @@ async def _search_candidates(
         for hit in page.hits:
             if hit.entry_id in pool:
                 continue
-            pool[hit.entry_id] = (
-                _Citation(
-                    memory_ref=hit.memory_ref,
-                    entry_id=hit.entry_id,
-                    entry_version_id=hit.entry_version_id,
-                ),
-                hit.text,
-                str(hit.entry_id),
+            citation = _Citation(
+                memory_ref=hit.memory_ref,
+                entry_id=hit.entry_id,
+                entry_version_id=hit.entry_version_id,
             )
+            text = getattr(hit, "text", None)
+            if not isinstance(text, str):
+                text = await _entry_text(memory, citation)
+            pool[hit.entry_id] = (citation, text, str(hit.entry_id))
     return list(pool.values())
+
+
+async def _entry_text(memory: ScopedMemoryApplication, citation: object) -> str:
+    """Read one entry's text through the public Memory API."""
+
+    try:
+        from powercontext.builtin.runtime.models import GetMemoryEntryRequest
+    except Exception:  # noqa: BLE001 - the Memory contract is optional for this helper
+        return ""
+    try:
+        entry = await memory.get(GetMemoryEntryRequest(citation=citation))  # type: ignore[arg-type]
+    except Exception:  # noqa: BLE001 - an unreadable hit contributes no text
+        return ""
+    return str(getattr(entry.entry, "text", "") or "")
 
 
 def _candidate_queries(question: str, terms: list[str]) -> tuple[str, ...]:
@@ -546,7 +560,11 @@ def _rank_page_entries(
         coverage.append(rare)
         heading = _heading_terms(texts[index])
         headings.append(float(sum(1 for term in terms if term in heading)))
-        sections.append(float(len(intents & _section_labels(texts[index]))) if intents else 0.0)
+        labels = _section_labels(texts[index]) if intents else frozenset()
+        phrases = sum(
+            1 for name in labels if name in intents and _SECTION_QUERIES.get(name, "") in texts[index].casefold()
+        )
+        sections.append(float(len(intents & labels)) + float(phrases))
     peak_relevance = max(relevance) or 1.0
     peak_coverage = max(coverage) or 1.0
     denominator = float(max(1, len(intents)))
