@@ -51,6 +51,61 @@ _BM25_K1 = 1.2
 _BLEND_RELEVANCE = 1.0
 _BLEND_COVERAGE = 0.75
 _BLEND_HEADING = 0.75
+_BLEND_SECTION = 1.0
+_RRF_K = 60
+_SECTION_WINDOW = 600
+_SECTION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "income": (
+        re.compile(r"consolidated statements? of (income|operations|earnings)"),
+        re.compile(r"statements? of operations"),
+        re.compile(r"income statement"),
+    ),
+    "balance": (re.compile(r"consolidated balance sheets?"), re.compile(r"balance sheets?")),
+    "cashflow": (
+        re.compile(r"consolidated statements? of cash flows?"),
+        re.compile(r"statements? of cash flows?"),
+        re.compile(r"cash flow statement"),
+    ),
+    "equity": (
+        re.compile(r"statements? of (stockholders|shareholders).? equity"),
+        re.compile(r"comprehensive income"),
+    ),
+    "geographic": (re.compile(r"geographic"), re.compile(r"segment information"), re.compile(r"segments?")),
+    "legal": (re.compile(r"legal proceedings"), re.compile(r"legal matters")),
+    "risk": (re.compile(r"risk factors"),),
+    "mda": (re.compile(r"management.s discussion"),),
+    "tax": (re.compile(r"income taxes?"), re.compile(r"effective tax rate")),
+    "debt": (re.compile(r"debt"), re.compile(r"borrowings"), re.compile(r"long-term obligations")),
+}
+_INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "income": ("income", "margin", "revenue", "gross", "operating", "net", "ebitda", "earnings", "profit", "eps"),
+    "balance": (
+        "balance",
+        "asset",
+        "liability",
+        "liabilities",
+        "inventory",
+        "receivable",
+        "goodwill",
+        "equity",
+        "cash equivalents",
+    ),
+    "cashflow": (
+        "cash flow",
+        "cash flows",
+        "capex",
+        "capital expenditure",
+        "operating activities",
+        "investing",
+        "financing",
+        "free cash",
+    ),
+    "geographic": ("geograph", "region", "international", "countries"),
+    "legal": ("legal", "litigation", "proceedings", "lawsuit", "settlement"),
+    "tax": ("tax",),
+    "debt": ("debt", "borrowings", "leverage"),
+    "risk": ("risk",),
+}
 _BM25_B = 0.75
 _HEADING_LINES = 3
 _STOPWORDS = frozenset({
@@ -222,24 +277,91 @@ async def search_pdf_pages(
     terms = _question_terms(question)
     if not terms:
         return ()
-    page = await memory.list()
-    citations: list[MemoryCitation] = []
-    texts: list[str] = []
-    order: list[int] = []
-    for record in page.entries:
+    entries = await _page_entries(memory)
+    if not entries:
+        return ()
+    citations = [entry[0] for entry in entries]
+    texts = [entry[1] for entry in entries]
+    pages = [entry[2] for entry in entries]
+    keys = [entry[3] for entry in entries]
+    lexical = _rank_page_entries(terms, texts, pages, _question_intents(question))
+    fused = _fuse_with_memory_search(lexical, await _memory_search_order(memory, question, limit), entries)
+    selected: list[MemoryCitation] = []
+    seen: set[str] = set()
+    for index in fused:
+        key = keys[index]
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(citations[index])
+        if len(selected) >= limit:
+            break
+    return tuple(selected)
+
+
+async def _page_entries(memory: ScopedMemoryApplication) -> list[tuple[MemoryCitation, str, int, str]]:
+    """Read every active page entry of the scoped Memory."""
+
+    try:
+        listing = await memory.list()
+    except Exception:  # noqa: BLE001 - a Memory without listing still has to answer
+        return []
+    entries: list[tuple[MemoryCitation, str, int, str]] = []
+    for record in listing.entries:
         if record.state != "active" or not record.entry.text.strip():
             continue
-        citations.append(record.citation)
-        texts.append(record.entry.text)
-        order.append(_page_number(record.entry.sources))
-    if not citations:
+        source_ids = tuple(str(getattr(source, "source_id", "")) for source in record.entry.sources)
+        key = source_ids[0] if source_ids else record.entry.entry_id
+        entries.append((record.citation, record.entry.text, _page_number(record.entry.sources), key))
+    return entries
+
+
+async def _memory_search_order(
+    memory: ScopedMemoryApplication,
+    question: str,
+    limit: int,
+) -> tuple[str, ...]:
+    """Ask the Memory for its own retrieval order, tolerating older Memories."""
+
+    try:
+        from powercontext.builtin.runtime.models import SearchMemoryRequest
+    except Exception:  # noqa: BLE001 - the runtime contract is optional for this helper
         return ()
-    ranked = _rank_page_entries(terms, texts, order)
-    return tuple(citations[index] for index in ranked[:limit])
+    try:
+        page = await memory.search(SearchMemoryRequest(query=question, mode="auto", limit=max(limit * 5, 100)))
+    except Exception:  # noqa: BLE001 - no usable index means lexical ranking alone
+        return ()
+    return tuple(hit.entry_id for hit in page.hits)
 
 
-def _rank_page_entries(terms: list[str], texts: list[str], order: list[int]) -> list[int]:
-    """Blend lexical relevance, rare-term coverage and heading matches into one ranking."""
+def _fuse_with_memory_search(
+    lexical: list[int],
+    search_order: tuple[str, ...],
+    entries: list[tuple[MemoryCitation, str, int, str]],
+) -> list[int]:
+    """Reciprocal-rank fusion of the lexical order and the Memory's own order."""
+
+    if not search_order:
+        return lexical
+    position = {entry[0].entry_id: index for index, entry in enumerate(entries)}
+    fused: dict[int, float] = {}
+    for rank, index in enumerate(lexical, start=1):
+        fused[index] = fused.get(index, 0.0) + 1.0 / (_RRF_K + rank)
+    for rank, entry_id in enumerate(search_order, start=1):
+        index = position.get(entry_id)
+        if index is not None:
+            fused[index] = fused.get(index, 0.0) + 1.0 / (_RRF_K + rank)
+    pages = [entry[2] for entry in entries]
+    return sorted(fused, key=lambda index: (-fused[index], pages[index], index))
+
+
+def _rank_page_entries(
+    terms: list[str],
+    texts: list[str],
+    order: list[int],
+    intents: frozenset[str],
+) -> list[int]:
+    """Blend lexical relevance, coverage, headings and statement structure."""
 
     tokenised = [_page_terms(text) for text in texts]
     lengths = [sum(counts.values()) or 1 for counts in tokenised]
@@ -255,6 +377,7 @@ def _rank_page_entries(terms: list[str], texts: list[str], order: list[int]) -> 
     relevance: list[float] = []
     coverage: list[float] = []
     headings: list[float] = []
+    sections: list[float] = []
     for index, counts in enumerate(tokenised):
         length = lengths[index]
         bm25 = 0.0
@@ -271,34 +394,70 @@ def _rank_page_entries(terms: list[str], texts: list[str], order: list[int]) -> 
         coverage.append(rare)
         heading = _heading_terms(texts[index])
         headings.append(float(sum(1 for term in terms if term in heading)))
+        sections.append(float(len(intents & _section_labels(texts[index]))) if intents else 0.0)
     peak_relevance = max(relevance) or 1.0
     peak_coverage = max(coverage) or 1.0
+    denominator = float(max(1, len(intents)))
     blended = [
         _BLEND_RELEVANCE * relevance[index] / peak_relevance
         + _BLEND_COVERAGE * coverage[index] / peak_coverage
         + _BLEND_HEADING * headings[index] / _HEADING_LINES
+        + _BLEND_SECTION * sections[index] / denominator
         for index in range(total)
     ]
     return sorted(range(total), key=lambda index: (-blended[index], order[index], index))
 
 
 def _page_terms(text: str) -> Counter[str]:
-    return Counter(term for term in _TERM.findall(text.casefold()) if term not in _STOPWORDS)
+    return Counter(_stem(term) for term in _TERM.findall(text.casefold()) if term not in _STOPWORDS)
 
 
 def _heading_terms(text: str) -> frozenset[str]:
     lines = [line.strip() for line in text.split("\n") if line.strip()][: _HEADING_LINES + 1]
-    # The projection prefixes every page with its document id; headings start after it.
-    heading = " ".join(lines[1:])
-    return frozenset(_TERM.findall(heading.casefold()))
+    if lines and " " not in lines[0] and lines[0].isascii():
+        # The projection prefixes every page with its document id; headings start after it.
+        lines = lines[1:]
+    return frozenset(_stem(term) for term in _TERM.findall(" ".join(lines).casefold()))
+
+
+def _section_labels(text: str) -> frozenset[str]:
+    head = text[: _SECTION_WINDOW].casefold()
+    return frozenset(
+        name for name, patterns in _SECTION_PATTERNS.items() if any(pattern.search(head) for pattern in patterns)
+    )
+
+
+def _question_intents(question: str) -> frozenset[str]:
+    text = question.casefold()
+    return frozenset(
+        name for name, keywords in _INTENT_KEYWORDS.items() if any(keyword in text for keyword in keywords)
+    )
 
 
 def _question_terms(question: str) -> list[str]:
-    return [
-        term
-        for term in dict.fromkeys(_TERM.findall(question.casefold()))
-        if term not in _STOPWORDS
-    ]
+    return list(
+        dict.fromkeys(
+            _stem(term) for term in _TERM.findall(question.casefold()) if term not in _STOPWORDS
+        )
+    )
+
+
+def _stem(term: str) -> str:
+    if len(term) > 5 and term.endswith("ies"):
+        return term[:-3] + "y"
+    if len(term) > 4 and term.endswith("es"):
+        return term[:-2]
+    if len(term) > 3 and term.endswith("s") and not term.endswith("ss"):
+        return term[:-1]
+    return term
+
+
+def _page_number(sources: object) -> int:
+    for source in sources:  # type: ignore[union-attr]
+        tail = str(getattr(source, "source_id", "")).rsplit(":", 1)[-1]
+        if tail.isdigit():
+            return int(tail)
+    return 1 << 30
 
 
 def _open_reader(content: bytes) -> PdfReader:
