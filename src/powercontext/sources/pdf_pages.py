@@ -54,6 +54,8 @@ _BLEND_COVERAGE = 0.75
 _BLEND_HEADING = 0.5
 _BLEND_SECTION = 1.5
 _BLEND_DOCUMENT = 0.5
+_POOL_LIMIT = 120
+_MAX_COMPLEMENTARY_QUERIES = 16
 _DOCUMENT_POOL = 20.0
 _RRF_K = 60
 _SECTION_WINDOW = 600
@@ -308,29 +310,102 @@ async def search_pdf_pages(
     terms = _question_terms(question)
     if not terms:
         return ()
-    entries = await _page_entries(memory)
-    if not entries:
+    pool = await _search_candidates(memory, question, terms)
+    if not pool:
         return ()
-    citations = [entry[0] for entry in entries]
-    texts = [entry[1] for entry in entries]
-    pages = [entry[2] for entry in entries]
-    keys = [entry[3] for entry in entries]
-    lexical = _rank_page_entries(terms, texts, pages, _question_intents(question))
-    documents = [text.split("\n", 1)[0] for text in texts]
-    lexical = _apply_document_routing(lexical, documents, pages, terms)
-    mode, order_hits = await _memory_search_order(memory, question, limit)
-    fused = _fuse_with_memory_search(lexical, order_hits, entries) if mode != "fts" else lexical
+    citations = [entry[0] for entry in pool]
+    texts = [entry[1] for entry in pool]
+    identities = [entry[2] for entry in pool]
+    positions = list(range(len(pool)))
+    intents = _question_intents(question)
+    order = _rank_page_entries(terms, texts, positions, intents)
+    order = _apply_document_routing(order, [text.split("\n", 1)[0] for text in texts], positions, terms)
     selected: list[MemoryCitation] = []
     seen: set[str] = set()
-    for index in fused:
-        key = keys[index]
-        if key in seen:
+    for index in order:
+        identity = identities[index]
+        if identity in seen:
             continue
-        seen.add(key)
+        seen.add(identity)
         selected.append(citations[index])
         if len(selected) >= limit:
             break
     return tuple(selected)
+
+
+async def _search_candidates(
+    memory: ScopedMemoryApplication,
+    question: str,
+    terms: list[str],
+) -> list[tuple[MemoryCitation, str, str]]:
+    """Collect real Memory search hits from the question and its complementary queries."""
+
+    try:
+        from powercontext.builtin.runtime.models import SearchMemoryRequest
+    except Exception:  # noqa: BLE001 - the Memory contract is optional for this helper
+        return []
+    from powercontext.builtin.artifacts.memory.models import MemoryCitation as _Citation
+
+    pool: dict[str, tuple[MemoryCitation, str, str]] = {}
+    for query in _candidate_queries(question, terms):
+        try:
+            page = await memory.search(SearchMemoryRequest(query=query, mode="auto", limit=_POOL_LIMIT))
+        except Exception:  # noqa: BLE001 - a single unusable query must not stop the search
+            continue
+        for hit in page.hits:
+            if hit.entry_id in pool:
+                continue
+            pool[hit.entry_id] = (
+                _Citation(
+                    memory_ref=hit.memory_ref,
+                    entry_id=hit.entry_id,
+                    entry_version_id=hit.entry_version_id,
+                ),
+                hit.text,
+                str(hit.entry_id),
+            )
+    return list(pool.values())
+
+
+def _candidate_queries(question: str, terms: list[str]) -> tuple[str, ...]:
+    """The original question plus complementary lexical and section queries."""
+
+    queries: list[str] = [question]
+    seen = {question.casefold()}
+    intents = _question_intents(question)
+    for intent in sorted(intents):
+        phrase = _SECTION_QUERIES.get(intent)
+        if phrase and phrase not in seen:
+            seen.add(phrase)
+            queries.append(phrase)
+    ordered = list(terms)
+    for start in range(0, min(len(ordered), 2 * (_MAX_COMPLEMENTARY_QUERIES - 1)), 2):
+        pair = " ".join(ordered[start : start + 2])
+        if pair and pair.casefold() not in seen:
+            seen.add(pair.casefold())
+            queries.append(pair)
+    for term in ordered[:4]:
+        if term.casefold() not in seen:
+            seen.add(term.casefold())
+            queries.append(term)
+    return tuple(queries[:_MAX_COMPLEMENTARY_QUERIES])
+
+
+_SECTION_QUERIES: dict[str, str] = {
+    "balance": "consolidated balance sheets",
+    "income": "consolidated statements of income",
+    "cashflow": "consolidated statements of cash flows",
+    "equity": "statements of stockholders equity",
+    "mda": "management discussion and analysis",
+    "segment": "segment information",
+    "geographic": "geographic operations",
+    "legal": "legal proceedings",
+    "risk": "risk factors",
+    "customer": "customer concentration",
+    "summary": "summary of financial performance",
+    "tax": "effective tax rate",
+    "debt": "long-term debt",
+}
 
 
 async def _page_entries(memory: ScopedMemoryApplication) -> list[tuple[MemoryCitation, str, int, str]]:
