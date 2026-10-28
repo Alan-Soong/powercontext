@@ -31,6 +31,7 @@ body {
   color: var(--ink);
   font-size: 14px;
   line-height: 1.55;
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
 h1, h2, h3, h4 { margin: 0; font-weight: 640; letter-spacing: -0.01em; }
@@ -133,9 +134,9 @@ svg { width: 18px; height: 18px; }
   padding: 16px 18px;
 }
 .card + .card { margin-top: 14px; }
-.card-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.card-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .card-head h2 { font-size: 14px; }
-.card-head .hint { color: var(--muted); font-size: 12px; }
+.card-head .hint { color: var(--muted); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
 .card-head .spacer { margin-left: auto; }
 
 .grid { display: grid; gap: 14px; }
@@ -176,6 +177,8 @@ tr:last-child td { border-bottom: 0; }
 }
 .searchbar input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
 .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+.controls label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.controls .muted { min-width: 0; }
 .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--surface); }
 .seg button { border: 0; background: transparent; padding: 6px 11px; font-size: 12.5px; color: var(--muted); }
 .seg button.active { background: var(--ink); color: #fff; }
