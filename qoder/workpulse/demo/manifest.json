@@ -1,0 +1,78 @@
+{
+  "documents": [
+    {
+      "file": "2026-10-08-pay-minutes.md",
+      "project": "支付中台改造",
+      "doc_type": "minutes",
+      "date": "2026-10-08",
+      "title": "10-08 支付中台周会纪要",
+      "source": "飞书 · 支付中台周会"
+    },
+    {
+      "file": "2026-10-15-pay-minutes.md",
+      "project": "支付中台改造",
+      "doc_type": "minutes",
+      "date": "2026-10-15",
+      "title": "10-15 支付中台周会纪要",
+      "source": "飞书 · 支付中台周会"
+    },
+    {
+      "file": "2026-10-21-pay-review.md",
+      "project": "支付中台改造",
+      "doc_type": "doc",
+      "date": "2026-10-21",
+      "title": "10-21 需求评审：退款超时治理",
+      "source": "飞书文档 · 需求评审"
+    },
+    {
+      "file": "2026-10-22-pay-minutes.md",
+      "project": "支付中台改造",
+      "doc_type": "minutes",
+      "date": "2026-10-22",
+      "title": "10-22 支付中台周会纪要",
+      "source": "飞书 · 支付中台周会"
+    },
+    {
+      "file": "2026-10-23-pay-chat.md",
+      "project": "支付中台改造",
+      "doc_type": "chat",
+      "date": "2026-10-23",
+      "title": "10-23 企微群 · 灰度问题排查",
+      "source": "企微群「支付中台灰度」"
+    },
+    {
+      "file": "2026-10-24-pay-review.md",
+      "project": "支付中台改造",
+      "doc_type": "doc",
+      "date": "2026-10-24",
+      "title": "10-24 灰度复盘（20% 流量）",
+      "source": "飞书文档 · 灰度复盘"
+    },
+    {
+      "file": "2026-10-27-pay-risk.md",
+      "project": "支付中台改造",
+      "doc_type": "minutes",
+      "date": "2026-10-27",
+      "title": "10-27 风险同步 · 支付中台",
+      "source": "站会口头同步 · 会后整理"
+    }
+  ],
+  "second_project": [
+    {
+      "file": "dataplatform/2026-10-20-migration-review.md",
+      "project": "数据平台迁移",
+      "doc_type": "doc",
+      "date": "2026-10-20",
+      "title": "10-20 数据平台迁移方案评审",
+      "source": "飞书文档 · 架构评审"
+    },
+    {
+      "file": "dataplatform/2026-10-26-drill.md",
+      "project": "数据平台迁移",
+      "doc_type": "minutes",
+      "date": "2026-10-26",
+      "title": "10-26 迁移演练记录",
+      "source": "演练现场记录"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# local data / secrets
+.env
+logs/
+__pycache__/
+*.pyc
+.venv/
+demo_output/
+site/images/*.tmp

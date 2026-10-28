@@ -1,0 +1,535 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#FBFAF7">
+<title>WorkPulse · 周报与项目记忆工作台</title>
+<meta name="description" content="WorkPulse 把会议纪要、聊天记录和文档变成可追溯的项目记忆，用 seekdb 一条 SQL 完成混合检索，每周自动生成带出处的周报。Qoder × OceanBase 2026 参赛作品。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2316181C'/%3E%3Cpath d='M5 20h5l3-9 4 13 3-8h7' fill='none' stroke='%23C2410C' stroke-width='2.4'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#main">跳到主要内容</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="#top" aria-label="WorkPulse 首页">
+      <svg class="brand-mark" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="1.6" y="1.6" width="20.8" height="20.8" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+        <path d="M4.6 14.4h3.1l2.1-5.6 2.8 8.6 2.2-6.2h4.6" fill="none" stroke="#C2410C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+      <span class="brand-name">WorkPulse</span>
+    </a>
+    <nav class="nav" aria-label="主导航">
+      <a href="#overview">概览</a>
+      <a href="#pain">痛点</a>
+      <a href="#features">功能</a>
+      <a href="#tech">技术</a>
+      <a href="#results">效果</a>
+      <a href="#start">上手</a>
+    </nav>
+    <a class="nav-repo" href="https://github.com/Alan-Soong/powercontext">
+      代码仓库
+      <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3.2 8.8 8.8 3.2M4.4 3.2h4.4v4.4"></path>
+      </svg>
+    </a>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- hero -->
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="kicker mono">Qoder × OceanBase 2026 参赛作品</p>
+        <h1 class="hero-title" id="hero-title">
+          <span class="hero-title-en">WorkPulse</span>
+          <span class="hero-title-zh"><span class="sep" aria-hidden="true">·</span>周报与项目记忆工作台</span>
+        </h1>
+        <p class="lede">把散落的会议纪要、聊天记录和文档变成<strong>可追溯的项目记忆</strong>，每周自动生成带出处的周报。</p>
+        <div class="hero-actions">
+          <a class="btn btn--primary" href="#features">看它如何工作</a>
+          <a class="btn btn--ghost" href="https://github.com/Alan-Soong/powercontext">
+            代码仓库
+            <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3.2 8.8 8.8 3.2M4.4 3.2h4.4v4.4"></path>
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <figure class="report-preview" aria-label="周报片段示例">
+        <div class="rp-bar">
+          <span class="mono">weekly · 2026-W43</span>
+          <span class="rp-state">草稿</span>
+        </div>
+        <div class="rp-body">
+          <p class="rp-doc-title">第 43 周项目周报</p>
+          <p class="rp-doc-meta mono">WorkPulse · 2026-10-19 至 2026-10-25</p>
+
+          <div class="rp-block rp-block--lead">
+            <p class="rp-label">本周进展</p>
+            <ul class="rp-list">
+              <li>
+                <p class="rp-text">混合检索改为一条 SQL，全文与向量分数在同一行完成加权。</p>
+                <p class="rp-cite mono">chunk#311 · 10-22 周会纪要 · 2026-10-22</p>
+              </li>
+              <li>
+                <p class="rp-text">任务状态变更写入项目记忆，看板与周报口径保持一致。</p>
+                <p class="rp-cite mono">chunk#318 · 10-23 群聊 · 2026-10-23</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="rp-block">
+            <p class="rp-label">风险</p>
+            <ul class="rp-list">
+              <li>
+                <p class="rp-text">HNSW 索引重建需要停机窗口，还没有排期。</p>
+                <p class="rp-cite mono">chunk#327 · 10-24 设计评审 · 2026-10-24</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="rp-block">
+            <p class="rp-label">下周计划</p>
+            <ul class="rp-list">
+              <li>
+                <p class="rp-text">补一轮检索评测集，先灰度再全量。</p>
+                <p class="rp-cite mono">chunk#331 · 10-24 设计评审 · 2026-10-24</p>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <figcaption class="rp-foot mono">
+          <span>生成耗时 3s</span>
+          <span>已召回上周结论与未完成项</span>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 概览 -->
+  <section class="section" id="overview" aria-labelledby="h-overview">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="h-overview">概览</h2>
+        <p class="section-lede">WorkPulse 把项目里散落的文字收成两层东西：一层是可以逐条核对的证据，一层是可以反复使用的经验。周报不再靠回忆，而是从这两层里取数、拼装、标注出处。</p>
+      </div>
+
+      <ol class="pipeline">
+        <li>
+          <span class="step-no mono">01</span>
+          <h3>导入</h3>
+          <p>纪要、群聊、文档分块入库，自动抽出待办、决策与风险，原文一并保留。</p>
+        </li>
+        <li>
+          <span class="step-no mono">02</span>
+          <h3>检索</h3>
+          <p>一条 SQL 同时算全文与向量，再过项目、类型、日期，权重按需要调。</p>
+        </li>
+        <li>
+          <span class="step-no mono">03</span>
+          <h3>产出</h3>
+          <p>周报与任务视图，每条结论后面跟着 chunk 出处，随时可以点回去看原文。</p>
+        </li>
+      </ol>
+
+      <dl class="facts">
+        <div>
+          <dt>资料形态</dt>
+          <dd>会议纪要 / 群聊记录 / 项目文档</dd>
+        </div>
+        <div>
+          <dt>存储与索引</dt>
+          <dd>seekdb v1.4.0 · FULLTEXT(ik) + VECTOR(hnsw)</dd>
+        </div>
+        <div>
+          <dt>记忆层</dt>
+          <dd>PowerContext 1.2.0 · basic memory 模式</dd>
+        </div>
+        <div>
+          <dt>服务</dt>
+          <dd>FastAPI · /search · /report · /evidence</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- 痛点 -->
+  <section class="section" id="pain" aria-labelledby="h-pain">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="h-pain">痛点</h2>
+        <p class="section-lede">三个问题通常出现在同一周里，指向同一件事：项目没有记忆。</p>
+      </div>
+
+      <ol class="pains">
+        <li>
+          <span class="pain-no mono">01</span>
+          <h3>周报要从聊天记录里一条条拼</h3>
+          <p>周五下午翻群、翻文档，把做过的事重新回忆一遍，再组织成看起来像周报的文字。</p>
+        </li>
+        <li>
+          <span class="pain-no mono">02</span>
+          <h3>项目资料散落，找不到当初的决定和出处</h3>
+          <p>决定是在哪次评审、哪份纪要里定的？搜索结果只给关键词命中，不给上下文。</p>
+        </li>
+        <li>
+          <span class="pain-no mono">03</span>
+          <h3>任务进度要反复确认</h3>
+          <p>谁在做、做到哪、卡在哪，每次同步都要重新问一遍，答案还常常对不上。</p>
+        </li>
+      </ol>
+
+      <p class="pull">信息都在，但不可检索、不可追溯、不可复用。</p>
+    </div>
+  </section>
+
+  <!-- 功能 -->
+  <section class="section" id="features" aria-labelledby="h-features">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="h-features">功能</h2>
+        <p class="section-lede">六项能力串成一条线：资料进得来，证据查得到，周报与记忆留得住。</p>
+      </div>
+
+      <div class="features">
+        <article class="feature feature--w7">
+          <span class="feature-no mono">01</span>
+          <h3>资料导入</h3>
+          <p class="feature-desc">把纪要、聊天记录和文档按语义分块入库，自动抽取待办、决策与风险，让资料从网盘里的文件变成可检索的条目。</p>
+          <p class="feature-tech mono">documents → chunks · 待办 / 决策 / 风险</p>
+        </article>
+
+        <article class="feature feature--w5">
+          <span class="feature-no mono">02</span>
+          <h3>混合检索</h3>
+          <p class="feature-desc">seekdb 一条 SQL 同时算全文（ik 分词）与向量（HNSW），关键词与语义权重可调，每条结果都带 chunk 出处，解决搜不到、搜到也不敢用的问题。</p>
+          <p class="feature-tech mono">MATCH ... AGAINST + cosine_distance</p>
+        </article>
+
+        <article class="feature">
+          <span class="feature-no mono">03</span>
+          <h3>任务看板</h3>
+          <p class="feature-desc">负责人、截止日、状态一屏看清，状态变更自动写入项目记忆，不用再把进度重新问一遍。</p>
+          <p class="feature-tech mono">tasks · status → memory</p>
+        </article>
+
+        <article class="feature">
+          <span class="feature-no mono">04</span>
+          <h3>周报生成</h3>
+          <p class="feature-desc">按周聚合进展、风险与下周计划，每条都带 <code>chunk#id · 文档 · 日期</code> 引用，周五的活儿从翻记录变成点生成。</p>
+          <p class="feature-tech mono">/report · 每条结论带出处</p>
+        </article>
+
+        <article class="feature">
+          <span class="feature-no mono">05</span>
+          <h3>记忆复用</h3>
+          <p class="feature-desc">PowerContext 保存周报口径、决策与结论，下次生成时自动召回，同一个项目越用越准。</p>
+          <p class="feature-tech mono">/v1/context/prepare</p>
+        </article>
+
+        <article class="feature feature--wide">
+          <div>
+            <span class="feature-no mono">06</span>
+            <h3>证据面板</h3>
+            <p class="feature-desc">把建表 DDL、最近一次检索 SQL 和 PowerContext 调用日志并排摆出来，任何一条结论都能当场核对，不用相信黑盒。</p>
+          </div>
+          <div class="feature-side">
+            <p class="feature-side-label mono">三份可核对的材料</p>
+            <ul class="chips">
+              <li>建表 DDL</li>
+              <li>最近检索 SQL</li>
+              <li>调用日志</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 技术 -->
+  <section class="section" id="tech" aria-labelledby="h-tech">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="h-tech">技术</h2>
+        <p class="section-lede">两个组件各承担一半：seekdb 保存可查的证据，PowerContext 保存可复用的经验。上层是 FastAPI 服务，使用 Qoder 开发。</p>
+      </div>
+
+      <figure class="arch" aria-labelledby="arch-cap">
+        <div class="arch-inner">
+          <div class="arch-row">
+            <div class="arch-node">
+              <p class="arch-name">浏览器</p>
+              <p class="arch-meta">周报 · 任务看板 · 证据面板</p>
+            </div>
+          </div>
+
+          <div class="arch-link" aria-hidden="true">
+            <span class="arch-link-label mono">HTTP / JSON</span>
+          </div>
+
+          <div class="arch-row">
+            <div class="arch-node arch-node--gateway">
+              <p class="arch-name">FastAPI</p>
+              <p class="arch-meta">/search · /report · /evidence</p>
+            </div>
+          </div>
+
+          <div class="arch-fork" aria-hidden="true">
+            <span class="fork-line"></span>
+            <span class="fork-bar"></span>
+            <span class="fork-stem fork-stem--l"></span>
+            <span class="fork-stem fork-stem--r"></span>
+          </div>
+
+          <div class="arch-split">
+            <div class="arch-node arch-node--db">
+              <p class="arch-name">seekdb</p>
+              <p class="arch-meta">OceanBase seekdb v1.4.0 · MySQL 协议</p>
+              <ul class="arch-tags">
+                <li>全文 ik</li>
+                <li>向量 hnsw</li>
+                <li>结构化过滤</li>
+              </ul>
+              <p class="arch-foot mono">documents · chunks · tasks<br>reports · search_log</p>
+            </div>
+            <div class="arch-node arch-node--pc">
+              <p class="arch-name">PowerContext</p>
+              <p class="arch-meta">1.2.0 · HTTP API · basic memory</p>
+              <ul class="arch-tags">
+                <li>scopes</li>
+                <li>remember</li>
+                <li>context/prepare</li>
+              </ul>
+              <p class="arch-foot mono">决策 · 进度 · 结论 · 偏好</p>
+            </div>
+          </div>
+        </div>
+        <figcaption id="arch-cap">请求路径：浏览器发起的检索与周报请求，在 FastAPI 内组装成一条 SQL 交给 seekdb，同时在 PowerContext 上读写项目记忆。</figcaption>
+      </figure>
+
+      <div class="tech-grid">
+        <article class="tech-col" aria-labelledby="h-seekdb">
+          <h3 id="h-seekdb">seekdb <span>v1.4.0</span></h3>
+          <p>文档、分块、任务、报告与检索日志都在同一个库里。全文索引用 <code>FULLTEXT INDEX ... WITH PARSER ik</code>，向量索引用 <code>VECTOR INDEX ... (DISTANCE=cosine, TYPE=hnsw, LIB=vsag)</code>，项目、类型、日期作为结构化条件，和两路打分在同一条 SQL 里融合。</p>
+          <div class="codeblock">
+            <div class="codeblock-head mono"><span>seekdb · chunks 表</span><span class="codeblock-meta">DDL 节选</span><span class="scroll-hint">可横向滚动</span></div>
+            <pre class="code" tabindex="0" aria-label="chunks 表建表语句节选"><code>CREATE TABLE chunks (
+  chunk_id   BIGINT      NOT NULL AUTO_INCREMENT,
+  doc_id     VARCHAR(64) NOT NULL,
+  project    VARCHAR(64) NOT NULL,
+  doc_type   VARCHAR(32) NOT NULL,
+  doc_date   DATE        NOT NULL,
+  chunk_text TEXT        NOT NULL,
+  embedding  VECTOR(384),
+  PRIMARY KEY (chunk_id),
+  <span class="tok-k">FULLTEXT INDEX</span> ft_chunk (chunk_text)
+    <span class="tok-k">WITH PARSER</span> ik,
+  <span class="tok-k">VECTOR INDEX</span> vec_chunk (embedding)
+    <span class="tok-k">WITH</span> (DISTANCE=cosine, TYPE=hnsw, LIB=vsag),
+  KEY idx_chunk_filter (project, doc_type, doc_date)
+) ORGANIZATION = HEAP;</code></pre>
+          </div>
+        </article>
+
+        <article class="tech-col" aria-labelledby="h-pc">
+          <h3 id="h-pc">PowerContext <span>1.2.0</span></h3>
+          <p>HTTP API，basic memory 模式，无需模型 API。一个项目一个作用域，决策、进度、结论与偏好写进去，生成周报前做一次有界召回，Dashboard 可以人工核对记忆读写。</p>
+          <ul class="endpoints">
+            <li>
+              <code>POST /v1/scopes</code>
+              <span>按项目建作用域</span>
+            </li>
+            <li>
+              <code>POST /v1/memory/remember</code>
+              <span>写入决策、进度、结论、偏好</span>
+            </li>
+            <li>
+              <code>POST /v1/context/prepare</code>
+              <span>生成前做有界召回</span>
+            </li>
+            <li>
+              <code>POST /v1/memory/entries/list</code>
+              <span>列出记忆条目，供人工核对</span>
+            </li>
+          </ul>
+          <p class="tech-note">记忆按作用域隔离，召回有字节上限，不会把历史一口气塞进上下文。</p>
+        </article>
+      </div>
+
+      <article class="fusion" aria-labelledby="h-fusion">
+        <div class="fusion-head">
+          <h3 id="h-fusion">一条 SQL 的三路融合</h3>
+          <ul class="chips">
+            <li>全文 ik</li>
+            <li>向量 HNSW</li>
+            <li>结构化过滤</li>
+          </ul>
+        </div>
+        <p>关键词走 FULLTEXT 索引，语义走 VECTOR 索引，项目、类型、日期走普通条件。两路分数按 <code>ft_weight</code> 加权（默认 0.45），向量权重自动取补数，排序、过滤、出处全部在同一条 SQL 里完成。</p>
+        <div class="codeblock">
+          <div class="codeblock-head mono"><span>seekdb · hybrid search</span><span class="codeblock-meta">SQL 节选</span><span class="scroll-hint">可横向滚动</span></div>
+          <pre class="code" tabindex="0" aria-label="混合检索 SQL 节选"><code><span class="tok-k">SELECT</span> c.chunk_id, c.doc_id, d.title, c.doc_date,
+       <span class="tok-f">MATCH</span>(c.chunk_text) <span class="tok-k">AGAINST</span> (%s) AS ft_score,
+       <span class="tok-f">cosine_distance</span>(c.embedding, %s)   AS vec_dist,
+       %s * LEAST(IFNULL(<span class="tok-f">MATCH</span>(c.chunk_text) <span class="tok-k">AGAINST</span> (%s), 0) * 2.2, 1.0)
+     + %s * (1 - LEAST(IFNULL(<span class="tok-f">cosine_distance</span>(c.embedding, %s), 1.0), 1.0)) AS score
+<span class="tok-k">FROM</span> chunks c
+<span class="tok-k">JOIN</span> documents d ON d.doc_id = c.doc_id
+<span class="tok-k">WHERE</span> c.project = %s
+  <span class="tok-k">AND</span> c.doc_type <span class="tok-k">IN</span> (%s)
+  <span class="tok-k">AND</span> c.doc_date <span class="tok-k">BETWEEN</span> %s <span class="tok-k">AND</span> %s
+<span class="tok-k">ORDER BY</span> score <span class="tok-k">DESC</span>, c.chunk_id <span class="tok-k">ASC</span>
+<span class="tok-k">LIMIT</span> %s;</code></pre>
+        </div>
+        <p class="fusion-note"><span class="mono">&lt; 20ms</span> 本地实测：一条 SQL 端到端完成三路检索，结果直接带回 chunk 出处。</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- 效果 -->
+  <section class="section" id="results" aria-labelledby="h-results">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="h-results">效果</h2>
+        <p class="section-lede">数据来自本地实测与示例数据集。页面里的 DDL 与 SQL 和仓库一致，可以照着核对。</p>
+      </div>
+
+      <div class="metrics">
+        <div class="metric metric--accent">
+          <p class="metric-figure mono">&lt; 20ms</p>
+          <p class="metric-label">一条 SQL 同时算向量、全文与结构化过滤；本机实测 1–11ms</p>
+        </div>
+        <div class="metric metric--accent">
+          <p class="metric-figure mono">0.6–1.0s</p>
+          <p class="metric-label">周报生成（含 seekdb 聚合与 PowerContext 召回）；原先要翻 40+ 分钟聊天记录</p>
+        </div>
+        <div class="metric">
+          <p class="metric-figure mono">9 / 16 / 26</p>
+          <p class="metric-label">示例数据集：2 个项目、9 份资料、16 个分块、26 条待办，全部可在库里核对</p>
+        </div>
+        <div class="metric">
+          <p class="metric-figure metric-figure--text">第 2 次</p>
+          <p class="metric-label">同一项目再次生成周报时，召回上周结论与未完成项</p>
+        </div>
+      </div>
+
+      <h3 class="shots-title">界面</h3>
+      <p class="shots-lede">三张界面截图来自本机实测：检索、任务与周报。图片走相对路径，离线打开也能显示，点开可以看原图。</p>
+
+      <div class="shots">
+        <figure class="shot-figure">
+          <div class="shot">
+            <a class="shot-link" href="images/retrieval.png" target="_blank" rel="noopener">
+              <img src="images/retrieval.png" alt="混合检索界面：查询与权重调整、基于原文的回答、每条结果的 chunk 出处与三路分数" loading="lazy" decoding="async" width="1600" height="1150" onerror="this.style.display='none'">
+            </a>
+          </div>
+          <figcaption>检索：回答带 chunk 出处，权重与三路分数可查</figcaption>
+        </figure>
+
+        <figure class="shot-figure">
+          <div class="shot">
+            <a class="shot-link" href="images/tasks.png" target="_blank" rel="noopener">
+              <img src="images/tasks.png" alt="任务看板界面：按状态分组，显示负责人、截止日与来源 chunk" loading="lazy" decoding="async" width="1600" height="1150" onerror="this.style.display='none'">
+            </a>
+          </div>
+          <figcaption>看板：状态、负责人、截止日、来源</figcaption>
+        </figure>
+
+        <figure class="shot-figure">
+          <div class="shot">
+            <a class="shot-link" href="images/report.png" target="_blank" rel="noopener">
+              <img src="images/report.png" alt="周报生成界面：Markdown 草稿、记忆复用面板与引用索引" loading="lazy" decoding="async" width="1600" height="1150" onerror="this.style.display='none'">
+            </a>
+          </div>
+          <figcaption>周报：草稿、记忆复用、引用索引</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- 上手 -->
+  <section class="section" id="start" aria-labelledby="h-start">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="h-start">上手</h2>
+        <p class="section-lede">三步在本机跑起来：seekdb 走 MySQL 协议，PowerContext 与 WorkPulse 各占一个端口。</p>
+      </div>
+
+      <div class="start-grid">
+        <ol class="steps">
+          <li>
+            <h3>启动 seekdb</h3>
+            <p>容器映射 2881，用 MySQL 协议连接；WorkPulse 首次启动时会自动建表与索引。</p>
+          </li>
+          <li>
+            <h3>启动 PowerContext</h3>
+            <p>默认端口 8000，basic memory 模式，无需模型 API。</p>
+          </li>
+          <li>
+            <h3>启动 WorkPulse</h3>
+            <p>FastAPI 服务，端口 8077。打开页面，导入资料，就可以生成第一份周报。</p>
+          </li>
+        </ol>
+
+        <div class="start-side">
+          <div class="codeblock codeblock--start">
+            <div class="codeblock-head mono"><span>bash</span><span class="codeblock-meta">三条命令</span><span class="scroll-hint">可横向滚动</span></div>
+            <pre class="code" tabindex="0" aria-label="本机启动命令"><code>docker run -d --name seekdb -p 2881:2881 quay.io/oceanbase/seekdb:latest
+powercontext server run            <span class="tok-c"># 端口 8000</span>
+python -m uvicorn app.main:app --port 8077</code></pre>
+          </div>
+
+          <div class="repo-block">
+            <div>
+              <p class="repo-title">仓库与分支</p>
+              <p class="repo-meta mono">Alan-Soong/powercontext · qoder-2026-workpulse · qoder/workpulse/</p>
+            </div>
+            <a class="btn btn--ghost" href="https://github.com/Alan-Soong/powercontext">
+              代码仓库
+              <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3.2 8.8 8.8 3.2M4.4 3.2h4.4v4.4"></path>
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <div>
+        <a class="brand" href="#top" aria-label="WorkPulse 首页">
+          <svg class="brand-mark" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <rect x="1.6" y="1.6" width="20.8" height="20.8" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <path d="M4.6 14.4h3.1l2.1-5.6 2.8 8.6 2.2-6.2h4.6" fill="none" stroke="#C2410C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+          <span class="brand-name">WorkPulse</span>
+        </a>
+        <p class="footer-line">把散落的会议纪要、聊天记录和文档，变成可追溯的项目记忆。</p>
+      </div>
+      <ul class="footer-links">
+        <li><a href="#overview">概览</a></li>
+        <li><a href="#tech">技术</a></li>
+        <li><a href="https://github.com/Alan-Soong/powercontext">代码仓库</a></li>
+      </ul>
+    </div>
+    <div class="footer-meta">
+      <p>技术栈：OceanBase seekdb v1.4.0 · PowerContext 1.2.0 · FastAPI · Qoder</p>
+      <p>本项目为 Qoder × OceanBase 2026 参赛作品。</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
